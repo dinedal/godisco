@@ -10,10 +10,12 @@ import (
 
 const DISCO_PROTOCOL_VERSION string = "1.1"
 
-type DiscoWorker struct {
-	outputWriter *bufio.Writer
-	inputReader  *bufio.Reader
-	taskInfo     *taskMessage
+type discoWorker struct {
+	outputWriter  *bufio.Writer
+	inputReader   *bufio.Reader
+	taskInfo      *taskMessage
+	currentInputs []discoInput
+	endOfInput    bool
 }
 
 var (
@@ -51,7 +53,7 @@ type taskMessage struct {
 	JobFile   string        `json:"jobfile"`
 }
 
-func (this *DiscoWorker) writePayload(preamble []byte, payload []byte) {
+func (this *discoWorker) writePayload(preamble []byte, payload []byte) {
 	payloadLen := []byte(strconv.Itoa(len(payload)))
 
 	this.outputWriter.Write(preamble)
@@ -63,46 +65,46 @@ func (this *DiscoWorker) writePayload(preamble []byte, payload []byte) {
 	this.outputWriter.Flush()
 }
 
-func (this *DiscoWorker) writeJSONPayload(preamble []byte, payload interface{}) {
+func (this *discoWorker) writeJSONPayload(preamble []byte, payload interface{}) {
 	jsonResult, _ := json.Marshal(payload)
 	this.writePayload(preamble, jsonResult)
 }
 
-func (this *DiscoWorker) sendAndReceive(preamble []byte, payload interface{}) {
+func (this *discoWorker) sendAndReceive(preamble []byte, payload interface{}) {
 	this.writeJSONPayload(preamble, payload)
 	response, _, _ := this.inputReader.ReadLine()
 	this.handleResponse(response)
 }
 
-func (this *DiscoWorker) Debug(text string) {
+func (this *discoWorker) Debug(text string) {
 	this.sendAndReceive(msgPreamble, text)
 }
 
-func (this *DiscoWorker) writeWorkerMessage() {
+func (this *discoWorker) writeWorkerMessage() {
 	startupMessage := workerMessage{DISCO_PROTOCOL_VERSION, os.Getpid()}
 
 	this.sendAndReceive(workerPreamble, startupMessage)
 }
 
-func (this *DiscoWorker) getTask() {
+func (this *discoWorker) getTask() {
 	this.sendAndReceive(taskPreamble, "")
 }
 
-func (this *DiscoWorker) getInput() {
+func (this *discoWorker) getInput() {
 	this.sendAndReceive(inputPreamble, "")
 }
 
-func (this *DiscoWorker) parseResponse(response []byte) (code string, length string, payload string) {
+func (this *discoWorker) parseResponse(response []byte) (code string, length string, payload string) {
 	responseStr := string(response)
 	parseResult := strings.SplitN(responseStr, string(spaceDelimiter), 3)
 	return parseResult[0], parseResult[1], parseResult[2]
 }
 
-func (this *DiscoWorker) handleResponse(response []byte) {
+func (this *discoWorker) handleResponse(response []byte) {
 	code, _, payload := this.parseResponse(response)
 	switch code {
 	case "OK":
-
+		// nothing to do, thanks?
 	case "TASK":
 		err := json.Unmarshal([]byte(payload), this.taskInfo)
 		if err != nil {
@@ -110,10 +112,22 @@ func (this *DiscoWorker) handleResponse(response []byte) {
 		}
 
 	case "INPUT":
-		inputMessage := new([]interface{})
-		err := json.Unmarshal([]byte(payload), inputMessage)
+		var inputMessage []interface{}
+		err := json.Unmarshal([]byte(payload), &inputMessage)
 		if err != nil {
 			panic(err)
+		}
+
+		if inputMessage[0].(string) == "done" {
+			this.endOfInput = true
+		}
+
+		inputsToProcess := inputMessage[1].([]interface{})
+
+		this.currentInputs = make([]discoInput, len(inputsToProcess))
+
+		for idx, elm := range inputsToProcess {
+			this.currentInputs[idx] = newDiscoInputFromParsedJSON(elm.([]interface{}))
 		}
 
 	default:
@@ -122,11 +136,12 @@ func (this *DiscoWorker) handleResponse(response []byte) {
 	}
 }
 
-func NewDiscoWorker() *DiscoWorker {
-	this := &DiscoWorker{
+func NewDiscoWorker() *discoWorker {
+	this := &discoWorker{
 		outputWriter: bufio.NewWriter(os.Stderr),
 		inputReader:  bufio.NewReader(os.Stdin),
 		taskInfo:     new(taskMessage),
+		endOfInput:   false,
 	}
 
 	this.writeWorkerMessage()
