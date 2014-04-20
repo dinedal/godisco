@@ -94,6 +94,20 @@ func (this *discoWorker) getInput() {
 	this.sendAndReceive(inputPreamble, "")
 }
 
+func (this *discoWorker) notifyOutput(input discoInput, outputLocation string, outputSize int) {
+	payload := make([]interface{}, 3)
+	payload[1] = outputLocation
+	payload[2] = outputSize
+
+	if input.labelAll {
+		payload[0] = "all"
+	} else {
+		payload[0] = input.label
+	}
+
+	this.writeJSONPayload(outputPreamble, payload)
+}
+
 func (this *discoWorker) parseResponse(response []byte) (code string, length string, payload string) {
 	responseStr := string(response)
 	parseResult := strings.SplitN(responseStr, string(spaceDelimiter), 3)
@@ -129,6 +143,8 @@ func (this *discoWorker) handleResponse(response []byte) {
 		for idx, elm := range inputsToProcess {
 			this.currentInputs[idx] = newDiscoInputFromParsedJSON(elm.([]interface{}))
 		}
+
+		this.notifyOutput(this.currentInputs[0], "disco://localhost/ddfs/vol0/blob/49/tiny_file_txt$575-e7543-98a54", 55)
 
 	default:
 		//panic("NOT IMPLEMENTED")
