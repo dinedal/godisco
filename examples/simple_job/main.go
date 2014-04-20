@@ -3,7 +3,9 @@ package main
 import "github.com/dinedal/godisco"
 
 func main() {
-	godisco.NewDiscoWorker()
+	disco := godisco.NewDiscoWorker()
+
+	disco.Debug("hello world")
 
 	for {
 	}
