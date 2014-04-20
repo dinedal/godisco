@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const DISCO_PROTOCOL_VERSION string = "1.1"
@@ -89,6 +88,10 @@ func (this *DiscoWorker) getTask() {
 	this.sendAndReceive(taskPreamble, "")
 }
 
+func (this *DiscoWorker) getInput() {
+	this.sendAndReceive(inputPreamble, "")
+}
+
 func (this *DiscoWorker) parseResponse(response []byte) (code string, length string, payload string) {
 	responseStr := string(response)
 	parseResult := strings.SplitN(responseStr, string(spaceDelimiter), 3)
@@ -106,8 +109,16 @@ func (this *DiscoWorker) handleResponse(response []byte) {
 			panic(err)
 		}
 
+	case "INPUT":
+		inputMessage := new([]interface{})
+		err := json.Unmarshal([]byte(payload), inputMessage)
+		if err != nil {
+			panic(err)
+		}
+
 	default:
-		panic("NOT IMPLEMENTED")
+		//panic("NOT IMPLEMENTED")
+		this.Debug(string(response))
 	}
 }
 
@@ -120,10 +131,7 @@ func NewDiscoWorker() *DiscoWorker {
 
 	this.writeWorkerMessage()
 	this.getTask()
-	for {
-		time.Sleep(100 * time.Millisecond)
-		input, _, _ := this.inputReader.ReadLine()
-		this.Debug(string(input))
-	}
+	this.getInput()
+
 	return this
 }
